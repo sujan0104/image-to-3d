@@ -1,55 +1,49 @@
+import torch
 import cv2
-from tkinter import Tk, filedialog
-import sys
-import os
-import shutil
+import numpy as np
 
-# Paths
-DATA_FOLDER = os.path.join(os.path.dirname(__file__), "../data")
+# Load model
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+midas = torch.hub.load("intel-isl/MiDaS", "DPT_Large")  # or "MiDaS_small" for speed
+midas.to(device)
+midas.eval()
 
-# Ensure data folder exists
-os.makedirs(DATA_FOLDER, exist_ok=True)
+# Load transforms
+midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms")
+transform = midas_transforms.dpt_transform  # for DPT_Large and DPT_Hybrid
 
-# --- Step 1: Select Image ---
-Tk().withdraw()  # Hide the Tkinter root window
+# Read image
+img_path = "data/sample.jpg"  # change if needed
+img = cv2.imread(img_path)
+if img is None:
+    raise FileNotFoundError(f"Image not found: {img_path}")
 
-file_path = filedialog.askopenfilename(
-    title="Select an image",
-    filetypes=[("Image files", "*.jpg *.jpeg *.png *.bmp *.tiff")]
-)
+img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-if not file_path:
-    print("[ERROR] No image selected.")
-    sys.exit()
+# Preprocess
+input_batch = transform(img).to(device)
 
-# --- Step 2: Clean data folder ---
-for file in os.listdir(DATA_FOLDER):
-    try:
-        os.remove(os.path.join(DATA_FOLDER, file))
-    except Exception as e:
-        print(f"[WARN] Could not delete {file}: {e}")
+# Sanity check shape
+print("Input shape:", input_batch.shape)  # should be [1, 3, H, W]
 
-# --- Step 3: Copy Image into data folder ---
-file_name = os.path.basename(file_path)
-dest_path = os.path.join(DATA_FOLDER, file_name)
+# Inference
+with torch.no_grad():
+    prediction = midas(input_batch)
+    prediction = torch.nn.functional.interpolate(
+        prediction.unsqueeze(1),
+        size=img.shape[:2],
+        mode="bicubic",
+        align_corners=False
+    ).squeeze()
 
-try:
-    shutil.copy(file_path, dest_path)
-    print(f"[INFO] Image copied to data folder: {dest_path}")
-except Exception as e:
-    print(f"[ERROR] Failed to copy image: {e}")
-    sys.exit()
+depth_map = prediction.cpu().numpy()
 
-# --- Step 4: Load Image from data folder ---
-image = cv2.imread(dest_path)
-if image is None:
-    print(f"[ERROR] Unable to load image: {dest_path}")
-    sys.exit()
+# Normalize for saving
+depth_min = depth_map.min()
+depth_max = depth_map.max()
+depth_map_normalized = (depth_map - depth_min) / (depth_max - depth_min)
+depth_map_normalized = (depth_map_normalized * 255).astype(np.uint8)
 
-print(f"[INFO] Image loaded successfully: {file_name}")
-
-# --- Step 5: Continue with your 3D processing pipeline ---
-# Replace this with your actual 3D processing code
-cv2.imshow("Selected Image", image)
-cv2.waitKey(0)
-cv2.destroyAllWindows()
+# Save output
+cv2.imwrite("output_depth.png", depth_map_normalized)
+print("Depth map saved to output_depth.png")
