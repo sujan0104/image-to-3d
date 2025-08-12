@@ -1,19 +1,18 @@
-# Virtual environment
-venv/
-
-# Python cache files
+# Ignore Python cache
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
-# Output files
+# Ignore virtual environment
+venv/
+
+# Ignore data folder (sample images, temporary files)
+data/
+
+# Ignore outputs folder (generated 3D files)
 outputs/
 
-# IDE / Editor settings
-.vscode/
-.idea/
-
-# OS-generated files
+# Ignore system files
 .DS_Store
 Thumbs.db
